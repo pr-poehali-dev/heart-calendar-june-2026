@@ -1,273 +1,295 @@
-const DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+import { useEffect, useRef, useState, useCallback } from "react";
+// @ts-expect-error no types
+import GIF from "gif.js.optimized";
 
-const JUNE_2026_START = 0;
+const DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 const TOTAL_DAYS = 30;
+const JUNE_START = 0;
+
+const W = 460;
+const H = 520;
+const COLS = 7;
+const GRID_LEFT = 30;
+const GRID_TOP = 160;
+const CELL_SIZE = (W - GRID_LEFT * 2) / COLS;
+
+function easeInOut(t: number) {
+  return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+}
+
+function drawCalendar(ctx: CanvasRenderingContext2D, heartScale: number) {
+  ctx.clearRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.font = "300 11px Montserrat, sans-serif";
+  ctx.fillStyle = "#B0A0BC";
+  ctx.textAlign = "center";
+  ctx.fillText("2026", W / 2, 52);
+
+  ctx.font = "300 56px Georgia, serif";
+  ctx.fillStyle = "#4A3F52";
+  ctx.fillText("Июнь", W / 2, 112);
+
+  const grad = ctx.createLinearGradient(W / 2 - 24, 0, W / 2 + 24, 0);
+  grad.addColorStop(0, "#FFDAC1");
+  grad.addColorStop(0.5, "#E8DAFF");
+  grad.addColorStop(1, "#C7F2E4");
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(W / 2 - 24, 124);
+  ctx.lineTo(W / 2 + 24, 124);
+  ctx.stroke();
+  ctx.restore();
+
+  DAYS.forEach((d, i) => {
+    ctx.save();
+    ctx.font = "500 9px Montserrat, sans-serif";
+    ctx.fillStyle = i >= 5 ? "#C97C50" : "#B0A0BC";
+    ctx.textAlign = "center";
+    ctx.fillText(d.toUpperCase(), GRID_LEFT + i * CELL_SIZE + CELL_SIZE / 2, GRID_TOP);
+    ctx.restore();
+  });
+
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < JUNE_START; i++) cells.push(null);
+  for (let d = 1; d <= TOTAL_DAYS; d++) cells.push(d);
+
+  cells.forEach((day, idx) => {
+    if (!day) return;
+    const col = idx % COLS;
+    const row = Math.floor(idx / COLS);
+    const cx = GRID_LEFT + col * CELL_SIZE + CELL_SIZE / 2;
+    const cy = GRID_TOP + 20 + row * CELL_SIZE + CELL_SIZE / 2;
+    const isWeekend = col >= 5;
+    const isHeart = day === 12;
+
+    if (isHeart) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(heartScale, heartScale);
+
+      ctx.shadowColor = "rgba(240, 120, 120, 0.4)";
+      ctx.shadowBlur = 10;
+      ctx.shadowOffsetY = 3;
+
+      const s = 21;
+      ctx.beginPath();
+      ctx.moveTo(0, s * 0.28);
+      ctx.bezierCurveTo(-s * 0.08, s * 0.08, -s * 0.5, -s * 0.05, -s * 0.5, -s * 0.32);
+      ctx.bezierCurveTo(-s * 0.5, -s * 0.65, -s * 0.1, -s * 0.85, 0, -s * 0.52);
+      ctx.bezierCurveTo(s * 0.1, -s * 0.85, s * 0.5, -s * 0.65, s * 0.5, -s * 0.32);
+      ctx.bezierCurveTo(s * 0.5, -s * 0.05, s * 0.08, s * 0.08, 0, s * 0.28);
+      ctx.closePath();
+      ctx.fillStyle = "#FFBCBC";
+      ctx.fill();
+      ctx.strokeStyle = "#F07878";
+      ctx.lineWidth = 1.5 / heartScale;
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      ctx.font = "500 13px Montserrat, sans-serif";
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(day), cx, cy + 1);
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.font = "400 14px Montserrat, sans-serif";
+      ctx.fillStyle = isWeekend ? "#C97C50" : "#4A3F52";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(day), cx, cy);
+      ctx.restore();
+    }
+  });
+
+  const dots = [
+    { color: "#FFDAC1", r: 5 },
+    { color: "#E8DAFF", r: 4 },
+    { color: "#C7F2E4", r: 5 },
+  ];
+  let dx = W / 2 - 18;
+  dots.forEach(({ color, r }) => {
+    ctx.beginPath();
+    ctx.arc(dx, H - 32, r, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    dx += 18;
+  });
+}
 
 export default function Index() {
-  const cells: (number | null)[] = [];
-  for (let i = 0; i < JUNE_2026_START; i++) cells.push(null);
-  for (let d = 1; d <= TOTAL_DAYS; d++) cells.push(d);
-  while (cells.length % 7 !== 0) cells.push(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animRef = useRef<number>(0);
+  const [gifStatus, setGifStatus] = useState<"idle" | "rendering" | "done">("idle");
+  const [webmStatus, setWebmStatus] = useState<"idle" | "recording" | "done">("idle");
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d")!;
+    let start: number | null = null;
+    const DURATION = 2400;
+
+    function tick(ts: number) {
+      if (!start) start = ts;
+      const t = ((ts - start) % DURATION) / DURATION;
+      const pulse = 1 + 0.1 * Math.sin(easeInOut(t) * Math.PI * 2);
+      drawCalendar(ctx, pulse);
+      animRef.current = requestAnimationFrame(tick);
+    }
+    animRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animRef.current);
+  }, []);
+
+  const exportGif = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    setGifStatus("rendering");
+
+    const gif = new GIF({
+      workers: 2,
+      quality: 6,
+      width: W,
+      height: H,
+      workerScript: "https://cdn.jsdelivr.net/npm/gif.js.optimized@1.0.1/dist/gif.worker.js",
+      transparent: 0x000000,
+    });
+
+    const tmp = document.createElement("canvas");
+    tmp.width = W;
+    tmp.height = H;
+    const ctx = tmp.getContext("2d")!;
+    const FRAMES = 40;
+    const DURATION = 2400;
+
+    for (let i = 0; i < FRAMES; i++) {
+      const t = i / FRAMES;
+      const pulse = 1 + 0.1 * Math.sin(easeInOut(t) * Math.PI * 2);
+      drawCalendar(ctx, pulse);
+      gif.addFrame(ctx, { copy: true, delay: Math.round(DURATION / FRAMES) });
+    }
+
+    gif.on("finished", (blob: Blob) => {
+      setGifStatus("done");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "june-2026.gif";
+      a.click();
+    });
+
+    gif.render();
+  }, []);
+
+  const exportWebm = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    setWebmStatus("recording");
+
+    const mimeType = MediaRecorder.isTypeSupported("video/webm; codecs=vp9")
+      ? "video/webm; codecs=vp9"
+      : "video/webm";
+
+    const stream = canvas.captureStream(30);
+    const recorder = new MediaRecorder(stream, { mimeType });
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data);
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: "video/webm" });
+      setWebmStatus("done");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "june-2026.webm";
+      a.click();
+    };
+    recorder.start();
+    setTimeout(() => recorder.stop(), 2600);
+  }, []);
 
   return (
-    <div className="calendar-page">
-      <div className="calendar-card">
-        <div className="calendar-header">
-          <span className="calendar-year">2026</span>
-          <h1 className="calendar-month">Июнь</h1>
-          <div className="header-line" />
-        </div>
+    <div style={styles.page}>
+      <canvas ref={canvasRef} width={W} height={H} style={styles.canvas} />
 
-        <div className="calendar-grid">
-          {DAYS.map((d, i) => (
-            <div key={d} className={`day-name ${i >= 5 ? "weekend-name" : ""}`}>
-              {d}
-            </div>
-          ))}
+      <div style={styles.buttons}>
+        <button
+          onClick={exportGif}
+          disabled={gifStatus === "rendering"}
+          style={{ ...styles.btn, ...styles.btnPeach }}
+        >
+          {gifStatus === "rendering" ? "Генерирую..." : gifStatus === "done" ? "GIF скачан ✓" : "Скачать GIF"}
+        </button>
 
-          {cells.map((day, idx) => {
-            if (!day) return <div key={`empty-${idx}`} className="day-cell empty" />;
-            const isHeart = day === 12;
-            const colIndex = (JUNE_2026_START + day - 1) % 7;
-            const isWeekend = colIndex >= 5;
-
-            return (
-              <div
-                key={day}
-                className={`day-cell ${isHeart ? "heart-day" : ""} ${isWeekend ? "weekend-day" : ""}`}
-                style={{ animationDelay: `${day * 30}ms` }}
-              >
-                {isHeart ? (
-                  <div className="heart-wrapper">
-                    <svg className="heart-svg" viewBox="0 0 32 30" fill="none">
-                      <path
-                        d="M16 28C16 28 2 19.5 2 10C2 5.58172 5.58172 2 10 2C12.3678 2 14.4958 3.0361 16 4.68533C17.5042 3.0361 19.6322 2 22 2C26.4183 2 30 5.58172 30 10C30 19.5 16 28 16 28Z"
-                        fill="var(--heart-fill)"
-                        stroke="var(--heart-stroke)"
-                        strokeWidth="1.5"
-                      />
-                    </svg>
-                    <span className="heart-number">{day}</span>
-                  </div>
-                ) : (
-                  <span className="day-number" style={{ color: isWeekend ? "var(--peach-dark)" : undefined }}>
-                    {day}
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="calendar-footer">
-          <div className="footer-dots">
-            <span className="dot dot-peach" />
-            <span className="dot dot-lavender" />
-            <span className="dot dot-mint" />
-          </div>
-        </div>
+        <button
+          onClick={exportWebm}
+          disabled={webmStatus === "recording"}
+          style={{ ...styles.btn, ...styles.btnLavender }}
+        >
+          {webmStatus === "recording"
+            ? "Записываю..."
+            : webmStatus === "done"
+            ? "WebM скачан ✓"
+            : "Скачать WebM"}
+        </button>
       </div>
 
-      <style>{`
-        :root {
-          --peach: #FFDAC1;
-          --peach-light: #FFF0E8;
-          --peach-dark: #C97C50;
-          --lavender: #E8DAFF;
-          --lavender-light: #F4EEFF;
-          --lavender-dark: #8B6BAE;
-          --mint: #C7F2E4;
-          --mint-light: #EDFAF5;
-          --mint-dark: #4AA885;
-          --heart-fill: #FFBCBC;
-          --heart-stroke: #F07878;
-          --text-main: #4A3F52;
-          --text-soft: #B0A0BC;
-          --bg-page: transparent;
-          --card-bg: transparent;
-          --card-shadow: none;
-        }
-
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-
-        body {
-          background: transparent;
-          font-family: 'Montserrat', sans-serif;
-        }
-
-        .calendar-page {
-          min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 40px 20px;
-          background: transparent;
-        }
-
-        .calendar-card {
-          background: transparent;
-          border-radius: 0;
-          box-shadow: none;
-          padding: 48px 52px 40px;
-          width: 100%;
-          max-width: 460px;
-          animation: fadeIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
-        }
-
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(28px) scale(0.97); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-
-        .calendar-header {
-          text-align: center;
-          margin-bottom: 36px;
-        }
-
-        .calendar-year {
-          font-family: 'Montserrat', sans-serif;
-          font-weight: 300;
-          font-size: 11px;
-          letter-spacing: 0.45em;
-          color: var(--text-soft);
-          text-transform: uppercase;
-        }
-
-        .calendar-month {
-          font-family: 'Cormorant', serif;
-          font-weight: 300;
-          font-size: 56px;
-          color: var(--text-main);
-          line-height: 1;
-          margin-top: 2px;
-          letter-spacing: 0.02em;
-        }
-
-        .header-line {
-          width: 48px;
-          height: 1.5px;
-          background: linear-gradient(90deg, var(--peach), var(--lavender), var(--mint));
-          margin: 14px auto 0;
-          border-radius: 2px;
-        }
-
-        .calendar-grid {
-          display: grid;
-          grid-template-columns: repeat(7, 1fr);
-          gap: 4px;
-        }
-
-        .day-name {
-          font-family: 'Montserrat', sans-serif;
-          font-weight: 500;
-          font-size: 9px;
-          letter-spacing: 0.1em;
-          text-transform: uppercase;
-          color: var(--text-soft);
-          text-align: center;
-          padding-bottom: 12px;
-        }
-
-        .weekend-name {
-          color: var(--peach-dark);
-          opacity: 0.8;
-        }
-
-        .day-cell {
-          aspect-ratio: 1;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 10px;
-          animation: cellIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
-          transition: transform 0.18s ease, background 0.18s ease;
-          cursor: default;
-        }
-
-        .day-cell:not(.empty):hover {
-          background: var(--lavender-light);
-          transform: scale(1.1);
-        }
-
-        .heart-day:hover {
-          background: transparent !important;
-        }
-
-        @keyframes cellIn {
-          from { opacity: 0; transform: scale(0.7); }
-          to { opacity: 1; transform: scale(1); }
-        }
-
-        .day-number {
-          font-family: 'Montserrat', sans-serif;
-          font-weight: 400;
-          font-size: 14px;
-          color: var(--text-main);
-        }
-
-        .weekend-day .day-number {
-          color: var(--peach-dark);
-        }
-
-        .heart-day {
-          background: transparent;
-        }
-
-        .heart-wrapper {
-          position: relative;
-          width: 42px;
-          height: 42px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .heart-svg {
-          position: absolute;
-          width: 100%;
-          height: 100%;
-          animation: heartPulse 2.4s ease-in-out infinite;
-          filter: drop-shadow(0 3px 10px rgba(240, 120, 120, 0.4));
-        }
-
-        @keyframes heartPulse {
-          0%, 100% { transform: scale(1); }
-          40% { transform: scale(1.1); }
-          55% { transform: scale(1.05); }
-        }
-
-        .heart-number {
-          position: relative;
-          z-index: 1;
-          font-family: 'Montserrat', sans-serif;
-          font-weight: 500;
-          font-size: 13px;
-          color: #fff;
-          letter-spacing: 0;
-          margin-top: -1px;
-        }
-
-        .calendar-footer {
-          margin-top: 32px;
-          display: flex;
-          justify-content: center;
-        }
-
-        .footer-dots {
-          display: flex;
-          gap: 8px;
-          align-items: center;
-        }
-
-        .dot {
-          display: block;
-          border-radius: 50%;
-        }
-
-        .dot-peach { width: 10px; height: 10px; background: var(--peach); }
-        .dot-lavender { width: 8px; height: 8px; background: var(--lavender); }
-        .dot-mint { width: 10px; height: 10px; background: var(--mint); }
-      `}</style>
+      <p style={styles.hint}>
+        GIF — для мессенджеров и везде<br />
+        WebM — идеальная прозрачность для сайтов и монтажа
+      </p>
     </div>
   );
 }
+
+const styles: Record<string, React.CSSProperties> = {
+  page: {
+    minHeight: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 28,
+    padding: "40px 20px",
+    background: "linear-gradient(135deg, #FFF5F0 0%, #F8F0FF 45%, #EDFAF5 100%)",
+    fontFamily: "'Montserrat', sans-serif",
+  },
+  canvas: {
+    borderRadius: 24,
+    background: "transparent",
+    boxShadow: "0 8px 60px rgba(160,120,200,0.13)",
+  },
+  buttons: {
+    display: "flex",
+    gap: 12,
+    flexWrap: "wrap",
+    justifyContent: "center",
+  },
+  btn: {
+    padding: "12px 28px",
+    borderRadius: 14,
+    border: "none",
+    cursor: "pointer",
+    fontFamily: "'Montserrat', sans-serif",
+    fontWeight: 500,
+    fontSize: 13,
+    letterSpacing: "0.04em",
+    transition: "opacity 0.2s",
+  },
+  btnPeach: {
+    background: "#FFDAC1",
+    color: "#7A4A28",
+  },
+  btnLavender: {
+    background: "#E8DAFF",
+    color: "#5A3A8A",
+  },
+  hint: {
+    fontSize: 11,
+    color: "#B0A0BC",
+    textAlign: "center",
+    lineHeight: 1.8,
+    letterSpacing: "0.03em",
+  },
+};
