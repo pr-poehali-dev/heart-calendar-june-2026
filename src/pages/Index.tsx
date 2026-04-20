@@ -83,15 +83,15 @@ export default function Index() {
           --heart-stroke: #F07878;
           --text-main: #4A3F52;
           --text-soft: #B0A0BC;
-          --bg-page: #FDF8FF;
-          --card-bg: #FFFFFF;
-          --card-shadow: 0 8px 60px rgba(160, 120, 200, 0.12), 0 2px 16px rgba(160, 120, 200, 0.08);
+          --bg-page: transparent;
+          --card-bg: transparent;
+          --card-shadow: none;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-          background: var(--bg-page);
+          background: transparent;
           font-family: 'Montserrat', sans-serif;
         }
 
@@ -101,13 +101,13 @@ export default function Index() {
           align-items: center;
           justify-content: center;
           padding: 40px 20px;
-          background: linear-gradient(135deg, #FFF5F0 0%, #F8F0FF 45%, #EDFAF5 100%);
+          background: transparent;
         }
 
         .calendar-card {
-          background: var(--card-bg);
-          border-radius: 32px;
-          box-shadow: var(--card-shadow);
+          background: transparent;
+          border-radius: 0;
+          box-shadow: none;
           padding: 48px 52px 40px;
           width: 100%;
           max-width: 460px;
